@@ -98,8 +98,11 @@ def get_url_from_access_page(page,findJsOrCss):
                         print("\033[32m[+] 200 " + url + "\033[0m")
                         JsOrCssAccessFile.append(url)
                 elif src != "":
-                    #url = urlInfo["hostUrlAndPath"][::-1].split("/",1)[1][::-1] + "/" + src
-                    url = page + src
+                    # 检测传进来的是目录还是文件
+                    if page.endswith('/') :
+                        url = page + src
+                    else:
+                        url = urlInfo["hostUrlAndPath"][::-1].split("/",1)[1][::-1] + "/" + src
                     if check_url(url) :
                         print("\033[32m[+] 200 " + url + "\033[0m")
                         JsOrCssAccessFile.append(url)
@@ -123,8 +126,11 @@ def get_url_from_access_page(page,findJsOrCss):
                 if check_url(f) :
                     accessPageTmp.append(f)
             elif f != "":
-                #url = urlInfo["hostUrlAndPath"][::-1].split("/",1)[1][::-1] + "/" + f
-                url = page + f
+                # 检测传进来的是目录还是文件
+                if page.endswith('/') :
+                    url = page + f
+                else:
+                    url = urlInfo["hostUrlAndPath"][::-1].split("/",1)[1][::-1] + "/" + f
                 if check_url(url) :
                     accessPageTmp.append(url)
 
