@@ -13,7 +13,7 @@ from prettytable import PrettyTable
 urlInfo = {}
 processend = 0
 dir_list = []
-count = 4
+count = 1
 
 findJsOrCss = 0
 accessPage = []
@@ -21,8 +21,10 @@ accessPageTmp = []
 JsOrCssAccessFile = []
 logging.captureWarnings(True)
 
+timetest = 0
 
 def check_url(url):
+    # 对爬取的url 进行检测，去重以及检测是否属于该站点
     if "#" in url :
         url = url.split("#")[0]
     if urllib.parse.urlparse(url).hostname == urlInfo["host"] \
@@ -31,11 +33,29 @@ def check_url(url):
     else:
         return False
 
+def endOutput():
+    # 结果输出
+    if processend == count :
+        time.sleep(3)
+        table = PrettyTable(['\033[33m序号 ','\033[33m可访问地址\033[0m'])
+        for i in range(0,len(accessPage)):
+            table.add_row([i,"\033[32m"+accessPage[i]+"\033[0m"])
+        print(table)
+
+        if findJsOrCss == 1:
+            jsTable = PrettyTable(['\033[33m序号','\033[33m可访问静态资源地址\033[0m'])
+            for i in range(0,len(JsOrCssAccessFile)):
+                jsTable.add_row([i,"\033[32m"+JsOrCssAccessFile[i]+"\033[0m"])
+            print(jsTable)
+        
+        print("耗时 ：" + str(time.time() - timetest))
+        return 1
+    return 0
+
 
 # 循环检测accessPageTmp 中是否存在元素 ，存在则交给page_connect验证
 def check_accessPageTmp(findJsOrCss):
     while 1:
-        #time.sleep(0.5)
         if len(accessPageTmp) != 0:
             accessPageTmp1 = accessPageTmp[::]
             for x in range(0,len(accessPageTmp1)):
@@ -47,20 +67,8 @@ def check_accessPageTmp(findJsOrCss):
                     accessPageTmp.remove(accessPageTmp1[x])
                     
         else:
-            if processend == count :
-                time.sleep(3)
-                # 结果输出
-                table = PrettyTable(['\033[33m序号 ','\033[33m可访问地址\033[0m'])
-                for i in range(0,len(accessPage)):
-                    table.add_row([i,"\033[32m"+accessPage[i]+"\033[0m"])
-                print(table)
-
-                if findJsOrCss == 1:
-                    jsTable = PrettyTable(['\033[33m序号','\033[33m可访问静态资源地址\033[0m'])
-                    for i in range(0,len(JsOrCssAccessFile)):
-                        jsTable.add_row([i,"\033[32m"+JsOrCssAccessFile[i]+"\033[0m"])
-                    print(jsTable)
-                return 0
+            # 所有线程结束则输出结果
+            if endOutput()== 1 : break
 
 def get_url_from_access_page(page,findJsOrCss):
     if check_url(page) == False :
@@ -114,25 +122,23 @@ def get_url_from_access_page(page,findJsOrCss):
     if forms != None :
         for form in forms:
             f = form.get("action") or form.get("href") or ""
+            # //开头的url
             if f.startswith("//"):
                 url = urlInfo["scheme"]+ ":" +f
-                if check_url(url) :
-                    accessPageTmp.append(url)
+                if check_url(url) : accessPageTmp.append(url)
+            # 网站绝对路径
             elif f.startswith("/"):
                 url = urlInfo["hostUrl"] + f
-                if check_url(url) :
-                    accessPageTmp.append(url)
+                if check_url(url) : accessPageTmp.append(url)
+            # 网址
             elif f.startswith("http"):
-                if check_url(f) :
-                    accessPageTmp.append(f)
+                if check_url(f) : accessPageTmp.append(f)
             elif f != "":
                 # 检测传进来的是目录还是文件
-                if page.endswith('/') :
-                    url = page + f
+                if page.endswith('/') : url = page + f
                 else:
                     url = urlInfo["hostUrlAndPath"][::-1].split("/",1)[1][::-1] + "/" + f
-                if check_url(url) :
-                    accessPageTmp.append(url)
+                if check_url(url) : accessPageTmp.append(url)
 
 
 def page_connect(url,findJsOrCss):
@@ -145,12 +151,22 @@ def page_connect(url,findJsOrCss):
     except Exception as e:
         print("\033[31m[-] timeout "+ url +"\033[0m")  
         return 0
-    if res.status_code == 200 :
-        print("\033[32m[+] 200 " + url + "\033[0m")
+    if res.status_code in [200,301,500] :
+        CL = 0
+        if "Content-Length" in res.headers :
+            CL = res.headers["Content-Length"]
+        # 打印当前扫描结果
+        print("\033[32m[+]  "+str(res.status_code)+"  " + str(CL).ljust(9) + "  " + url + " "  +"\033[0m")
+
         if url not in accessPage: accessPage.append(url)
-        res.close()
-        # 爬取本页cs
+        # 排除一些 下载文件，从而提高爬取速度
+        if "Content-Type" in res.headers :
+            CT = res.headers["Content-Type"]
+            if CT.startswith("application") or CT.startswith("image") or CT.startswith("video") or CT.startswith("audio"):
+                return 0
+        # 爬取本页url 
         threading.Thread(target=get_url_from_access_page,args=(url,findJsOrCss,)).start()
+        res.close()
 
     else :
         res.close()
@@ -165,12 +181,12 @@ def main_start():
             page_connect(urlInfo["hostUrl"] + dir.replace("\n",""),findJsOrCss)
         except Exception as e:
             print("\033[31m[*] "+ str(e) +"\033[0m")
-    time.sleep(2)
-    global processend 
+    time.sleep(3)
+    global processend
     processend += 1
 
 if __name__ == "__main__":
-
+    timetest = time.time()
     parser = argparse.ArgumentParser()
     parser.add_argument("-f", "--file", help="字典 (不选则爬取页面url)", dest="file", type=str, default="")
     parser.add_argument("-u", "--url", help="扫描url",  dest="url",type=str, default="")
@@ -187,7 +203,7 @@ if __name__ == "__main__":
             with open(args.file,"r") as f:
                 dir_list = f.readlines()
         except:
-            print("文件错误")
+            print("导入文件错误")
             exit()
     # 静态资源
     if args.static != 0:
@@ -195,7 +211,6 @@ if __name__ == "__main__":
 
     if args.thread != 1 and  args.thread >0:
         count = args.thread
-
     # 获取 url 基本信息
     parseurl = urllib.parse.urlparse(scanUrl)
     urlInfo.update({"host":parseurl.hostname})
@@ -206,10 +221,13 @@ if __name__ == "__main__":
     # 检测爬取的页面
     threading.Thread(target=check_accessPageTmp,args=(findJsOrCss,)).start()
 
-    
-    
+    # 基于字典的扫描
     dir_list.append(parseurl.path)
     for x in range(count):
         threading.Thread(target=main_start,args=()).start()
+    
+   
+
+    
 
     
